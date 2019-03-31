@@ -136,14 +136,14 @@ sub analyse_cdepn {
       # has been included from an external file and 
       # should be ignored, otherwise record it as a function
       # declaration
-      if (/^F {(.*)} {(.+):(.+)}/) {
+      if (/^F \{(.*)\} \{(.+):(.+)\}/) {
         my $loc="$2:$3";
 	$f1 = parseDeclaration($1);
         
 	#if ($cpp) { $f1 =~ s/<.*>//g; }
         $F{$f1} = "$2:$3";
         $M{$f1}=3;
-      } elsif (/^C {(.*)} {(.+):(.+)}\s+(.+)/) {
+      } elsif (/^C \{(.*)\} \{(.+):(.+)\}\s+(.+)/) {
         my $loc = "$2:$3";
         # Lines beginning with C are calling a function
         # The key is hashed as "caller:callee" and the

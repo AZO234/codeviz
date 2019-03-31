@@ -205,7 +205,7 @@ sub readcdepn {
     while (!eof(CDEPFILE)) {
       $line = <CDEPFILE>;
       # Read a function declaration line
-      if ($line =~ /^F {(.*)} {(.+):(.+)}/) {
+      if ($line =~ /^F \{(.*)\} \{(.+):(.+)\}/) {
         my $fdecl = $1;
         $file = $f;
         $file =~ s/\.cdepn//;
@@ -220,7 +220,7 @@ sub readcdepn {
       }
 
       # Read a function call line
-      if ($line =~ /^C {(.*)} {(.+):(.+)}\s+(.+)/) {
+      if ($line =~ /^C \{(.*)\} \{(.+):(.+)\}\s+(.+)/) {
         $caller = parseDeclaration($1);
 	$callee = parseDeclaration($4);
         $line   = $3;

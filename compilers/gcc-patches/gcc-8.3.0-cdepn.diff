@@ -1,0 +1,205 @@
+diff -uprN gcc-8.3.0/gcc/cgraph.c gcc-8.3.0_/gcc/cgraph.c
+--- gcc-8.3.0/gcc/cgraph.c	2018-05-28 22:44:18.000000000 +0900
++++ gcc-8.3.0_/gcc/cgraph.c	2019-03-31 13:06:46.192230294 +0900
+@@ -828,7 +828,8 @@ cgraph_edge::set_call_stmt (gcall *new_s
+ cgraph_edge *
+ symbol_table::create_edge (cgraph_node *caller, cgraph_node *callee,
+ 			   gcall *call_stmt, profile_count count,
+-			   bool indir_unknown_callee)
++			   bool indir_unknown_callee,
++			   location_t call_location)
+ {
+   cgraph_edge *edge;
+ 
+@@ -902,6 +903,8 @@ symbol_table::create_edge (cgraph_node *
+   if (call_stmt && caller->call_site_hash)
+     cgraph_add_edge_to_call_site_hash (edge);
+ 
++  edge->call_location = call_location;
++
+   return edge;
+ }
+ 
+@@ -912,7 +915,7 @@ cgraph_node::create_edge (cgraph_node *c
+ 			  gcall *call_stmt, profile_count count)
+ {
+   cgraph_edge *edge = symtab->create_edge (this, callee, call_stmt, count,
+-					   false);
++					   false, input_location);
+ 
+   initialize_inline_failed (edge);
+ 
+@@ -950,7 +953,7 @@ cgraph_node::create_indirect_edge (gcall
+ 				   bool compute_indirect_info)
+ {
+   cgraph_edge *edge = symtab->create_edge (this, NULL, call_stmt,
+-							    count, true);
++							    count, true, input_location);
+   tree target;
+ 
+   initialize_inline_failed (edge);
+diff -uprN gcc-8.3.0/gcc/cgraph.h gcc-8.3.0_/gcc/cgraph.h
+--- gcc-8.3.0/gcc/cgraph.h	2018-05-28 22:44:18.000000000 +0900
++++ gcc-8.3.0_/gcc/cgraph.h	2019-03-31 14:08:31.805662556 +0900
+@@ -1772,6 +1772,9 @@ struct GTY((chain_next ("%h.next_caller"
+ 
+   /* Expected frequency of executions within the function.  */
+   sreal sreal_frequency ();
++
++  /* CodeViz: Location the call occurred at */
++  location_t call_location;
+ private:
+   /* Remove the edge from the list of the callers of the callee.  */
+   void remove_caller (void);
+@@ -2288,7 +2291,8 @@ private:
+      edge).  */
+   cgraph_edge *create_edge (cgraph_node *caller, cgraph_node *callee,
+ 			    gcall *call_stmt, profile_count count,
+-			    bool indir_unknown_callee);
++			    bool indir_unknown_callee,
++			    location_t call_location);
+ 
+   /* Put the edge onto the free list.  */
+   void free_edge (cgraph_edge *e);
+diff -uprN gcc-8.3.0/gcc/cgraphunit.c gcc-8.3.0_/gcc/cgraphunit.c
+--- gcc-8.3.0/gcc/cgraphunit.c	2018-05-28 22:44:18.000000000 +0900
++++ gcc-8.3.0_/gcc/cgraphunit.c	2019-03-31 14:28:51.574844134 +0900
+@@ -602,10 +602,16 @@ cgraph_node::add_new_function (tree fnde
+     DECL_FUNCTION_PERSONALITY (fndecl) = lang_hooks.eh_personality ();
+ }
+ 
++extern int cdepn_dump;
+ /* Analyze the function scheduled to be output.  */
+ void
+ cgraph_node::analyze (void)
+ {
++  tree thisTree, calleeTree;
++  FILE *fnref_f;
++  cgraph_edge *calleeEdge;
++  expanded_location xloc;
++
+   if (native_rtl_p ())
+     {
+       analyzed = true;
+@@ -691,6 +697,36 @@ cgraph_node::analyze (void)
+   analyzed = true;
+ 
+   input_location = saved_loc;
++
++  if (cdepn_dump) {
++    /* CodeViz: Output information on this node */
++    thisTree = this->decl;
++    if ((fnref_f = cdepn_open(NULL)))
++      {
++        fprintf(fnref_f,"F {%s} {%s:%d}\n",
++	    lang_hooks.decl_printable_name (thisTree, 2),
++	    DECL_SOURCE_FILE (thisTree), DECL_SOURCE_LINE (thisTree));
++
++      }
++
++    /* CodeViz: Output information on all functions this node calls */
++    for (calleeEdge = this->callees; calleeEdge;
++	 calleeEdge = calleeEdge->next_callee)  {
++      calleeTree = calleeEdge->callee->decl;
++      if (thisTree != NULL &&
++	  calleeTree != NULL &&
++	  (fnref_f = cdepn_open(NULL)) != NULL)
++	{
++	  xloc = expand_location(calleeEdge->call_location);
++	  fprintf(fnref_f, "C {%s} {%s:%d} {%s}\n",
++	      lang_hooks.decl_printable_name (thisTree, 2),
++	      xloc.file, xloc.line,
++	      lang_hooks.decl_printable_name (calleeTree, 2));
++	}
++      else
++	printf("CODEVIZ: Unexpected NULL encountered\n");
++    }
++  }
+ }
+ 
+ /* C++ frontend produce same body aliases all over the place, even before PCH
+diff -uprN gcc-8.3.0/gcc/toplev.c gcc-8.3.0_/gcc/toplev.c
+--- gcc-8.3.0/gcc/toplev.c	2018-02-14 01:18:37.000000000 +0900
++++ gcc-8.3.0_/gcc/toplev.c	2019-03-31 14:41:11.531510182 +0900
+@@ -2144,6 +2144,53 @@ do_compile ()
+     }
+ }
+ 
++/*
++ * codeviz: Open the cdepn file. This is called with a filename by main()
++ * and with just NULL for every other instance to return just the handle
++ */
++FILE *g_fnref_f = NULL;
++char cdepnfile[256] = "--wonthappen--";
++int cdepn_dump = 0;
++
++FILE *cdepn_open(const char *filename) {
++  struct stat cdepnstat;
++  int errval;
++  time_t currtime;
++  if (filename && g_fnref_f == NULL) {
++    strcpy(cdepnfile, filename);
++    strcat(cdepnfile, ".cdepn");
++
++    /*
++     * Decide whether to open write or append. There appears to be a weird
++     * bug that decides to open the file twice, overwriting all the cdepn
++     * information put there before
++     */
++    errval = stat(cdepnfile, &cdepnstat); 
++    currtime = time(NULL);
++    if (errval == -1 || currtime - cdepnstat.st_mtime > 5)  {
++      g_fnref_f = fopen(cdepnfile, "w");
++      fprintf(stderr, "opened dep file %s\n",cdepnfile);
++    } else {
++      g_fnref_f = fopen(cdepnfile, "a");
++      fprintf(stderr, "append dep file %s\n",cdepnfile);
++    }
++
++    fflush(stderr);
++  }
++
++  return g_fnref_f;
++}
++
++void cdepn_close(void) {
++  if (g_fnref_f) fclose(g_fnref_f);
++  g_fnref_f = NULL;
++}
++
++int cdepn_checkprint(void *fncheck) {
++  return 1;
++  /*return (void *)fncheck == (void *)decl_name; */
++}
++
+ toplev::toplev (timer *external_timer,
+ 		bool init_signals)
+   : m_use_TV_TOTAL (external_timer == NULL),
+@@ -2264,7 +2311,12 @@ toplev::main (int argc, char **argv)
+     {
+       if (m_use_TV_TOTAL)
+ 	start_timevars ();
++    cdepn_dump = ((getenv("CDEPN_SUPPRESS")) ? 0 : 1);
++      if (cdepn_dump)
++         cdepn_open(main_input_filename);
+       do_compile ();
++      if (cdepn_dump)
++         cdepn_close();
+     }
+ 
+   if (warningcount || errorcount || werrorcount)
+diff -uprN gcc-8.3.0/gcc/tree.h gcc-8.3.0_/gcc/tree.h
+--- gcc-8.3.0/gcc/tree.h	2019-01-03 07:34:36.000000000 +0900
++++ gcc-8.3.0_/gcc/tree.h	2019-03-31 14:56:06.315311513 +0900
+@@ -5870,4 +5870,11 @@ type_has_mode_precision_p (const_tree t)
+   return known_eq (TYPE_PRECISION (t), GET_MODE_PRECISION (TYPE_MODE (t)));
+ }
+ 
++/*
++ * CodeViz functions to get the output file handle for cdepn files
++ */
++FILE *cdepn_open(const char *filename);
++void cdepn_close(void);
++int  cdepn_checkprint(void *fncheck);
++
+ #endif  /* GCC_TREE_H  */

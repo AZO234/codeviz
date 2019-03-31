@@ -6,6 +6,7 @@ Version 1.0.12
  o Delete vim swap files (Petr Cerny)
  o Handle DESTDIR as an alternative installation root than / (Petr Cerny)
  o gcc 4.6.2 (Rafael Aquini)
+ o gcc 8.3.0 and x86_64 (AZO)
 
 Version 1.0.11
  o Update the cncc collection method to understand ncc 2.4 (Tim Auckland)

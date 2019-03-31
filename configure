@@ -6,7 +6,7 @@
 # the scripts. It is meant to behave similar to ordinary configure scripts
 
 PREFIX=/usr/local
-GCCVERSION=4.6.2
+GCCVERSION=8.3.0
 GCCGRAPH=-unset-
 
 # Print program usage
@@ -17,8 +17,8 @@ usage() {
   echo "  -h, --help	    display this help and exit"
   echo "  --prefix=PREFIX   install architecture-independent files in PREFIX"
   echo "                    [Default: /usr/local]"
-  echo "  --gcc=VERSION     version of gcc to use: 4.6.2 only available"
-  echo "                    [Default: 4.6.2]"
+  echo "  --gcc=VERSION     version of gcc to use: 8.3.0 only available"
+  echo "                    [Default: 8.3.0]"
   echo "  --gccgraph=PATH   install patched gcc to this path"
   echo "                    [Default: $HOME/gccgraph]"
   echo "  --perllib=PATH    Where to install the perl libraries"
