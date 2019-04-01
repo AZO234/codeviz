@@ -89,6 +89,8 @@ fi
 checkprog dot graphviz
 checkprog make make
 checkprog gcc gcc
+checkprog patch patch
+checkprog wget wget
 
 # Check that dot can generate graphs
 TEMP=`mktemp 2> /dev/null`

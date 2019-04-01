@@ -8,6 +8,7 @@ export CDEPN_SUPPRESS
 
 all:
 	cd $(TOPLEVEL)/compilers; \
+	chmod +x install_gcc-$(GCCVERSION).sh; \
 	./install_gcc-$(GCCVERSION).sh $(GCCGRAPH) compile-only
 
 clean:
